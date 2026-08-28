@@ -91,8 +91,12 @@ def fetch_handler(event, context):
     except s3.exceptions.ClientError:
         pass
 
+    # The download URL is not pre-signed: it needs the API key too.
     local = f"/tmp/{name}"
-    urllib.request.urlretrieve(file_url, local)
+    dl = urllib.request.Request(file_url, headers={"X-API-KEY": key})
+    with urllib.request.urlopen(dl, timeout=600) as r, open(local, "wb") as fh:
+        while chunk := r.read(1 << 20):
+            fh.write(chunk)
     s3.upload_file(local, RAW_BUCKET, s3_key)
     os.remove(local)
 
