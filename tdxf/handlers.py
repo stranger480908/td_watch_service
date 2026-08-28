@@ -95,7 +95,27 @@ def fetch_handler(event, context):
     urllib.request.urlretrieve(file_url, local)
     s3.upload_file(local, RAW_BUCKET, s3_key)
     os.remove(local)
-    return {"status": "uploaded", "key": s3_key, "file_date": fd.isoformat()}
+
+    # Invoke the loader directly rather than via an S3 notification. The
+    # notification would make RawBucket and LoadFunction mutually dependent,
+    # which CloudFormation rejects as a circular dependency. Calling it here is
+    # also more explicit: replaying one day is a single invoke with a known key.
+    target = os.environ.get("LOAD_FUNCTION")
+    invoked = False
+    if target:
+        boto3.client("lambda").invoke(
+            FunctionName=target,
+            InvocationType="Event",
+            Payload=json.dumps({"bucket": RAW_BUCKET, "key": s3_key}).encode(),
+        )
+        invoked = True
+
+    return {
+        "status": "uploaded",
+        "key": s3_key,
+        "file_date": fd.isoformat(),
+        "load_invoked": invoked,
+    }
 
 
 def load_handler(event, context):

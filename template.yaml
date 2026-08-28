@@ -23,6 +23,7 @@ Resources:
   RawBucket:
     Type: AWS::S3::Bucket
     Properties:
+      BucketName: !Sub tmwatch-raw-${AWS::AccountId}-${AWS::Region}
       VersioningConfiguration: { Status: Enabled }
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
@@ -72,9 +73,11 @@ Resources:
           RAW_BUCKET: !Ref RawBucket
           ODP_SECRET_ARN: !Ref OdpApiKey
           PRODUCT: TRTDXFAP
+          LOAD_FUNCTION: !Ref LoadFunction
       Policies:
         - S3CrudPolicy: { BucketName: !Ref RawBucket }
         - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref OdpApiKey }
+        - LambdaInvokePolicy: { FunctionName: !Ref LoadFunction }
       Events:
         Daily:
           Type: Schedule
@@ -98,18 +101,9 @@ Resources:
         SecurityGroupIds: [!Ref LambdaSecurityGroup]
         SubnetIds: !Ref PrivateSubnets
       Policies:
-        - S3ReadPolicy: { BucketName: !Ref RawBucket }
+        - S3ReadPolicy:
+            BucketName: !Sub tmwatch-raw-${AWS::AccountId}-${AWS::Region}
         - VPCAccessPolicy: {}
-      Events:
-        RawUploaded:
-          Type: S3
-          Properties:
-            Bucket: !Ref RawBucket
-            Events: s3:ObjectCreated:*
-            Filter:
-              S3Key:
-                Rules:
-                  - { Name: suffix, Value: .zip }
 
   IngestFailureAlarm:
     Type: AWS::CloudWatch::Alarm
