@@ -1,0 +1,170 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: USPTO trademark watch - daily ingest
+
+Parameters:
+  VpcId:          { Type: AWS::EC2::VPC::Id }
+  PrivateSubnets: { Type: List<AWS::EC2::Subnet::Id> }
+  RouteTableIds:  { Type: CommaDelimitedList }
+  DatabaseUrl:    { Type: String, NoEcho: true }
+  AlertEmail:     { Type: String }
+  MonthlyBudget:  { Type: Number, Default: 25 }
+
+Globals:
+  Function:
+    Runtime: python3.12
+    MemorySize: 1024
+    Timeout: 900
+    Architectures: [arm64]
+    Tags: { project: tmwatch }
+
+Resources:
+
+  RawBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      VersioningConfiguration: { Status: Enabled }
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: cheapen-old-archives
+            Status: Enabled
+            Transitions:
+              - { StorageClass: STANDARD_IA, TransitionInDays: 30 }
+              - { StorageClass: GLACIER_IR,  TransitionInDays: 120 }
+
+  OdpApiKey:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Description: USPTO ODP API key. Set the value by hand after deploy.
+      SecretString: '{"api_key":"REPLACE_ME"}'
+
+  # Free. This is what lets the VPC function reach S3 without a NAT Gateway.
+  S3GatewayEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.s3
+      VpcEndpointType: Gateway
+      RouteTableIds: !Ref RouteTableIds
+
+  LambdaSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: tmwatch load function
+      VpcId: !Ref VpcId
+      SecurityGroupEgress:
+        - { IpProtocol: -1, CidrIp: 0.0.0.0/0, Description: RDS and S3 endpoint }
+
+  # Outside the VPC on purpose: needs public internet for USPTO.
+  FetchFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: tdxf.handlers.fetch_handler
+      MemorySize: 512
+      Environment:
+        Variables:
+          RAW_BUCKET: !Ref RawBucket
+          ODP_SECRET_ARN: !Ref OdpApiKey
+          PRODUCT: TRTDXFAP
+      Policies:
+        - S3CrudPolicy: { BucketName: !Ref RawBucket }
+        - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref OdpApiKey }
+      Events:
+        Daily:
+          Type: Schedule
+          Properties:
+            # 09:15 UTC, after USPTO posts the overnight file.
+            Schedule: cron(15 9 * * ? *)
+            Name: tmwatch-daily-fetch
+
+  # Inside the VPC because it talks to RDS. No NAT: S3 via gateway endpoint,
+  # DB credentials via KMS-decrypted env var, no other egress needed.
+  LoadFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: tdxf.handlers.load_handler
+      MemorySize: 2048
+      Environment:
+        Variables:
+          DATABASE_URL: !Ref DatabaseUrl
+      VpcConfig:
+        SecurityGroupIds: [!Ref LambdaSecurityGroup]
+        SubnetIds: !Ref PrivateSubnets
+      Policies:
+        - S3ReadPolicy: { BucketName: !Ref RawBucket }
+        - VPCAccessPolicy: {}
+      Events:
+        RawUploaded:
+          Type: S3
+          Properties:
+            Bucket: !Ref RawBucket
+            Events: s3:ObjectCreated:*
+            Filter:
+              S3Key:
+                Rules:
+                  - { Name: suffix, Value: .zip }
+
+  IngestFailureAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Ingest failed. A silent pipeline means missed deadlines.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Statistic: Sum
+      Period: 3600
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - { Name: FunctionName, Value: !Ref LoadFunction }
+      AlarmActions: [!Ref AlarmTopic]
+
+  # A run that succeeds but loads nothing is the failure mode that looks fine.
+  NoRecordsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Load function did not run in 36h
+      Namespace: AWS/Lambda
+      MetricName: Invocations
+      Statistic: Sum
+      Period: 129600
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      Dimensions:
+        - { Name: FunctionName, Value: !Ref LoadFunction }
+      AlarmActions: [!Ref AlarmTopic]
+
+  AlarmTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      Subscription: [{ Protocol: email, Endpoint: !Ref AlertEmail }]
+
+  Budget:
+    Type: AWS::Budgets::Budget
+    Properties:
+      Budget:
+        BudgetName: tmwatch-monthly
+        BudgetType: COST
+        TimeUnit: MONTHLY
+        BudgetLimit: { Amount: !Ref MonthlyBudget, Unit: USD }
+      NotificationsWithSubscribers:
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 80
+          Subscribers:
+            - { SubscriptionType: EMAIL, Address: !Ref AlertEmail }
+
+Outputs:
+  RawBucketName: { Value: !Ref RawBucket }
+  SecretArn:     { Value: !Ref OdpApiKey }
+  LoadFunction:  { Value: !Ref LoadFunction }

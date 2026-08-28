@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<trademark-applications-daily>
+  <version>
+    <version-no>2.0</version-no>
+    <version-date>20041108</version-date>
+  </version>
+  <application-information>
+    <file-segments>
+      <file-segment>TRMK</file-segment>
+      <action-keys>
+        <action-key>NA</action-key>
+
+        <!-- New application, not yet published. -->
+        <case-file>
+          <serial-number>97000001</serial-number>
+          <transaction-date>20260826</transaction-date>
+          <case-file-header>
+            <filing-date>20260801</filing-date>
+            <status-code>630</status-code>
+            <status-date>20260815</status-date>
+            <mark-identification>NUVAHNA</mark-identification>
+            <mark-drawing-code>4</mark-drawing-code>
+            <published-for-opposition-date>0</published-for-opposition-date>
+            <attorney-name>Dana R. Whitfield</attorney-name>
+            <attorney-docket-number>NUV-003</attorney-docket-number>
+            <standard-characters-claimed-in>T</standard-characters-claimed-in>
+            <intent-to-use-in>T</intent-to-use-in>
+          </case-file-header>
+          <case-file-statements>
+            <case-file-statement>
+              <type-code>GS0031</type-code>
+              <text>Non-medicated skin care preparations; body lotions; facial serums</text>
+            </case-file-statement>
+            <case-file-statement>
+              <type-code>PM0000</type-code>
+              <text>NUVANA</text>
+            </case-file-statement>
+          </case-file-statements>
+          <classifications>
+            <classification>
+              <international-code-total-no>1</international-code-total-no>
+              <international-code>003</international-code>
+              <us-code>001</us-code>
+              <us-code>004</us-code>
+              <status-code>6</status-code>
+              <primary-code>003</primary-code>
+            </classification>
+          </classifications>
+          <correspondent>
+            <address-1>DANA R. WHITFIELD</address-1>
+            <address-2>WHITFIELD IP LLP</address-2>
+            <address-3>411 BRICKELL AVE STE 900</address-3>
+            <address-4>MIAMI FL 33131</address-4>
+          </correspondent>
+          <case-file-owners>
+            <case-file-owner>
+              <entry-number>1</entry-number>
+              <party-type>1</party-type>
+              <nationality><state>FL</state></nationality>
+              <legal-entity-type-code>03</legal-entity-type-code>
+              <party-name>Nuvahna Beauty LLC</party-name>
+              <city>Fort Lauderdale</city>
+              <state>FL</state>
+              <country>US</country>
+            </case-file-owner>
+          </case-file-owners>
+          <design-searches/>
+          <foreign-applications/>
+        </case-file>
+
+        <!-- Identical-ish string, unrelated class. The scoring engine must
+             rank this LOW despite near-identical mark text. -->
+        <case-file>
+          <serial-number>97000002</serial-number>
+          <transaction-date>20260826</transaction-date>
+          <case-file-header>
+            <filing-date>20260722</filing-date>
+            <status-code>630</status-code>
+            <mark-identification>NUVANA</mark-identification>
+            <mark-drawing-code>4</mark-drawing-code>
+            <attorney-name>Peter Oyelaran</attorney-name>
+          </case-file-header>
+          <case-file-statements>
+            <case-file-statement>
+              <type-code>GS0071</type-code>
+              <text>Industrial centrifugal pumps for chemical processing; pump housings sold as a component of industrial pumps</text>
+            </case-file-statement>
+          </case-file-statements>
+          <classifications>
+            <classification>
+              <international-code>007</international-code>
+              <primary-code>007</primary-code>
+            </classification>
+          </classifications>
+          <case-file-owners>
+            <case-file-owner>
+              <party-name>Nuvana Fluid Systems, Inc.</party-name>
+              <party-type>1</party-type>
+              <country>US</country>
+            </case-file-owner>
+          </case-file-owners>
+        </case-file>
+
+        <!-- Multi-class, with a translation statement. -->
+        <case-file>
+          <serial-number>97000003</serial-number>
+          <transaction-date>20260826</transaction-date>
+          <case-file-header>
+            <filing-date>20260610</filing-date>
+            <status-code>638</status-code>
+            <mark-identification>SOLEIL D'OR</mark-identification>
+            <attorney-name>Dana R. Whitfield</attorney-name>
+          </case-file-header>
+          <case-file-statements>
+            <case-file-statement>
+              <type-code>GS0031</type-code>
+              <text>Perfumes; essential oils for personal use</text>
+            </case-file-statement>
+            <case-file-statement>
+              <type-code>GS0351</type-code>
+              <text>Retail store services featuring cosmetics</text>
+            </case-file-statement>
+            <case-file-statement>
+              <type-code>TR0000</type-code>
+              <text>The English translation of SOLEIL D'OR in the mark is GOLDEN SUN.</text>
+            </case-file-statement>
+          </case-file-statements>
+          <classifications>
+            <classification>
+              <international-code>003</international-code>
+              <international-code>035</international-code>
+              <primary-code>003</primary-code>
+            </classification>
+          </classifications>
+          <case-file-owners>
+            <case-file-owner>
+              <party-name>Maison Soleil SARL</party-name>
+              <nationality><country>FR</country></nationality>
+            </case-file-owner>
+          </case-file-owners>
+        </case-file>
+      </action-keys>
+    </file-segments>
+  </application-information>
+</trademark-applications-daily>

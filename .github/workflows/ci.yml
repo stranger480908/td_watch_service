@@ -1,0 +1,57 @@
+name: ci
+
+on:
+  push: { branches: [main] }
+  pull_request:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12', cache: pip }
+      - run: pip install -r requirements.txt cfn-lint ruff
+      - name: Lint
+        run: ruff check tdxf tools
+      - name: Parser and diff tests
+        run: |
+          python tests/test_pipeline.py
+          python tests/test_statements.py
+          python tests/test_phonetics.py
+      - name: Analyzer smoke test on fixtures
+        run: python tools/analyze_sample.py --dir tests
+      - name: Validate CloudFormation
+        run: cfn-lint template.yaml
+
+  deploy:
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - uses: aws-actions/setup-sam@v2
+      - run: sam build
+      - name: Deploy
+        run: |
+          sam deploy --no-confirm-changeset --no-fail-on-empty-changeset \
+            --stack-name tmwatch \
+            --capabilities CAPABILITY_IAM \
+            --resolve-s3 \
+            --parameter-overrides \
+              VpcId=${{ vars.VPC_ID }} \
+              PrivateSubnets=${{ vars.PRIVATE_SUBNETS }} \
+              RouteTableIds=${{ vars.ROUTE_TABLE_IDS }} \
+              DatabaseUrl='${{ secrets.DATABASE_URL }}' \
+              AlertEmail=${{ vars.ALERT_EMAIL }}
