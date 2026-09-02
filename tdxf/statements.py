@@ -13,12 +13,14 @@ from __future__ import annotations
 
 import re
 
-FOUR_CHAR_KINDS = ("TLIT", "TNSF")
+# Verified against real data: transliteration is TL0000, a two-char prefix.
+# The four-char TLIT form documented for DTD v2.0 does not appear in v2.3.
+FOUR_CHAR_KINDS = ()
 
 GOODS_SERVICES = "GS"
 PSEUDO_MARK = "PM"
 TRANSLATION = "TR"
-TRANSLITERATION = "TLIT"
+TRANSLITERATION = "TL"
 MARK_DESCRIPTION = "DM"
 MARK_OVERFLOW = "MK"
 DISCLAIMER = "D0"

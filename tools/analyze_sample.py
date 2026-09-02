@@ -24,7 +24,14 @@ from pathlib import Path
 
 from lxml import etree
 
-VALID_CLASSES = {f"{i:03d}" for i in range(1, 46)} | {"200", "A", "B", "201", "202"}
+# Nice classes 001-045, plus USPTO-specific codes verified in real data:
+# 200 collective, A and B certification, and historical pre-Nice US classes.
+VALID_CLASSES = (
+    {f"{i:03d}" for i in range(1, 46)}
+    | {"200", "201", "202"}
+    | {"A", "B", "A  ", "B  "}
+    | {"046", "049", "100", "101", "102", "103", "104", "105", "106", "107"}
+)
 
 LESS_GOODS = re.compile(r"\(\([^)]*\)\)")
 NEW_WORDING = re.compile(r"\*[^*]+\*")
