@@ -174,3 +174,72 @@ def load_handler(event, context):
         "events": counts,
         "publications": counts.get(EventType.PUBLISHED_FOR_OPPOSITION.value, 0),
     }
+
+
+def migrate_handler(event, context):
+    """
+    Run SQL migration files against RDS, in order, exactly once each.
+
+    Lives in the VPC because RDS is private and unreachable from outside it.
+
+    State is tracked in schema_migration: a file that has been applied is
+    skipped on the next run, so re-invoking is safe. Each file runs in its own
+    transaction, so a failure leaves the database at the last good version
+    rather than half-migrated.
+
+    Invoke with {} to apply everything pending, or {"dry_run": true} to preview.
+    """
+    import pathlib
+
+    import psycopg
+
+    dry_run = bool(event.get("dry_run"))
+    only = event.get("only")
+
+    root = pathlib.Path(__file__).parent.parent / "migrations"
+    files = sorted(p for p in root.glob("*.sql"))
+    if only:
+        files = [p for p in files if p.name == only]
+    if not files:
+        return {"error": f"no .sql files found in {root}", "only": only}
+
+    conn = psycopg.connect(os.environ["DATABASE_URL"], autocommit=False)
+    applied, skipped, failed = [], [], None
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """CREATE TABLE IF NOT EXISTS schema_migration (
+                       filename    TEXT PRIMARY KEY,
+                       applied_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+                   )"""
+            )
+        conn.commit()
+
+        with conn.cursor() as cur:
+            cur.execute("SELECT filename FROM schema_migration")
+            done = {r[0] for r in cur.fetchall()}
+
+        for path in files:
+            if path.name in done:
+                skipped.append(path.name)
+                continue
+            if dry_run:
+                applied.append(f"WOULD RUN {path.name}")
+                continue
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(path.read_text())
+                    cur.execute(
+                        "INSERT INTO schema_migration (filename) VALUES (%s)",
+                        (path.name,),
+                    )
+                conn.commit()
+                applied.append(path.name)
+            except Exception as e:
+                conn.rollback()
+                failed = {"file": path.name, "error": str(e)[:1500]}
+                break
+    finally:
+        conn.close()
+
+    return {"applied": applied, "skipped": skipped, "failed": failed, "dry_run": dry_run}

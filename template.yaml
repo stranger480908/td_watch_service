@@ -105,6 +105,24 @@ Resources:
             BucketName: !Sub tmwatch-raw-${AWS::AccountId}-${AWS::Region}
         - VPCAccessPolicy: {}
 
+  # Runs SQL migrations against RDS. In the VPC because RDS is private.
+  # No schedule and no triggers: invoked by hand when migrations change.
+  MigrateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: tdxf.handlers.migrate_handler
+      MemorySize: 512
+      Timeout: 300
+      Environment:
+        Variables:
+          DATABASE_URL: !Ref DatabaseUrl
+      VpcConfig:
+        SecurityGroupIds: [!Ref LambdaSecurityGroup]
+        SubnetIds: !Ref PrivateSubnets
+      Policies:
+        - VPCAccessPolicy: {}
+
   IngestFailureAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
