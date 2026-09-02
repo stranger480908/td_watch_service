@@ -123,6 +123,24 @@ Resources:
       Policies:
         - VPCAccessPolicy: {}
 
+  # Read-only SQL access for development. RDS is private, so this is the only
+  # way to inspect it. Invoke-only via IAM: no URL, no public exposure.
+  QueryFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: tdxf.handlers.query_handler
+      MemorySize: 512
+      Timeout: 120
+      Environment:
+        Variables:
+          DATABASE_URL: !Ref DatabaseUrl
+      VpcConfig:
+        SecurityGroupIds: [!Ref LambdaSecurityGroup]
+        SubnetIds: !Ref PrivateSubnets
+      Policies:
+        - VPCAccessPolicy: {}
+
   IngestFailureAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:

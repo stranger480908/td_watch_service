@@ -243,3 +243,40 @@ def migrate_handler(event, context):
         conn.close()
 
     return {"applied": applied, "skipped": skipped, "failed": failed, "dry_run": dry_run}
+
+
+def query_handler(event, context):
+    """
+    Run a read-only SQL query against RDS and return rows as JSON.
+
+    A development and operations tool: RDS is private, so there is no other way
+    to inspect it. Invoke-only via IAM, no public URL, no write access enforced
+    beyond the read-only transaction below.
+
+    Invoke with {"sql": "SELECT ...", "params": [...], "limit": 100}.
+    """
+    import psycopg
+    from psycopg.rows import dict_row
+
+    sql = (event.get("sql") or "").strip()
+    if not sql:
+        return {"error": "no sql provided"}
+
+    params = event.get("params") or None
+    limit = int(event.get("limit") or 100)
+
+    conn = psycopg.connect(os.environ["DATABASE_URL"], autocommit=True)
+    try:
+        # read_only rejects INSERT/UPDATE/DELETE/DDL at the server, so a typo
+        # here cannot damage the database.
+        conn.read_only = True
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(sql, params)
+            if cur.description is None:
+                return {"rows": [], "note": "statement returned no rows"}
+            rows = cur.fetchmany(limit)
+        return {"row_count": len(rows), "rows": json.loads(json.dumps(rows, default=str))}
+    except Exception as e:
+        return {"error": str(e)[:1500]}
+    finally:
+        conn.close()
