@@ -408,7 +408,13 @@ def databricks_upload_handler(event, context):
             with urllib.request.urlopen(preq, timeout=60) as r:
                 triggered = json.loads(r.read()).get("update_id")
         except urllib.error.HTTPError as e:
-            triggered = f"trigger failed: HTTP {e.code}"
+            # 409 means an update is already running, which is the outcome we
+            # wanted. Anything else is a real failure worth surfacing.
+            triggered = (
+                "already running"
+                if e.code == 409
+                else f"trigger failed: HTTP {e.code} {e.read()[:200].decode('utf-8', 'replace')}"
+            )
 
     return {
         "uploaded": target,
