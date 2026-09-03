@@ -79,9 +79,15 @@ SELECT_OWNERS = "SELECT serial_number, party_name FROM mark_owner WHERE serial_n
 def start_run(conn: Connection, file_name: str, file_date: date) -> int:
     with conn.cursor() as cur:
         cur.execute(
+            # Only reset a run that is not already finished. Concurrent
+            # invocations for the same file used to clobber a completed row
+            # back to 'running', which made the log unreadable even though the
+            # data was fine.
             """INSERT INTO ingest_run (file_name, file_date) VALUES (%s,%s)
                ON CONFLICT (product, file_name) DO UPDATE
-                 SET started_at = now(), status = 'running'
+                 SET started_at = now(),
+                     status = CASE WHEN ingest_run.status = 'ok'
+                                   THEN ingest_run.status ELSE 'running' END
                RETURNING id""",
             (file_name, file_date),
         )

@@ -161,13 +161,18 @@ def load_handler(event, context):
     records = 0
     counts: dict[str, int] = {}
     try:
+        # Count in a mutable container rather than a nonlocal: the generator is
+        # consumed inside load_stream, and reading a nonlocal int afterwards
+        # gave 0 even though every record had been processed.
+        counter = {"n": 0}
+
         def counted():
-            nonlocal records
             for cf in iter_case_files_from_zip(local):
-                records += 1
+                counter["n"] += 1
                 yield cf
 
         events = list(load_stream(conn, counted(), run_id, observed_on=fd))
+        records = counter["n"]
         counts = dict(summarise(events))
         finish_run(conn, run_id, records, len(events))
         conn.commit()
