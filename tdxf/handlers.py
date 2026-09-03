@@ -114,11 +114,25 @@ def fetch_handler(event, context):
         )
         invoked = True
 
+    # Second consumer of the same file: the lakehouse. Kept separate from the
+    # Postgres loader so a Databricks outage cannot break the alerting pipeline,
+    # and vice versa. Both are fire-and-forget.
+    upload_target = os.environ.get("UPLOAD_FUNCTION")
+    upload_invoked = False
+    if upload_target:
+        boto3.client("lambda").invoke(
+            FunctionName=upload_target,
+            InvocationType="Event",
+            Payload=json.dumps({"bucket": RAW_BUCKET, "key": s3_key}).encode(),
+        )
+        upload_invoked = True
+
     return {
         "status": "uploaded",
         "key": s3_key,
         "file_date": fd.isoformat(),
         "load_invoked": invoked,
+        "upload_invoked": upload_invoked,
     }
 
 
@@ -375,9 +389,31 @@ def databricks_upload_handler(event, context):
     except urllib.error.HTTPError as e:
         return {"error": f"upload failed: HTTP {e.code}", "detail": e.read()[:400].decode("utf-8", "replace")}
 
+    # Kick the DLT pipeline so bronze, silver and gold refresh from the file
+    # we just pushed. Without this the tables only update when someone clicks
+    # Run in the Databricks UI.
+    pipeline_id = os.environ.get("DATABRICKS_PIPELINE_ID")
+    triggered = None
+    if pipeline_id:
+        try:
+            preq = urllib.request.Request(
+                f"{host}/api/2.0/pipelines/{pipeline_id}/updates",
+                data=json.dumps({"full_refresh": False}).encode(),
+                method="POST",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                },
+            )
+            with urllib.request.urlopen(preq, timeout=60) as r:
+                triggered = json.loads(r.read()).get("update_id")
+        except urllib.error.HTTPError as e:
+            triggered = f"trigger failed: HTTP {e.code}"
+
     return {
         "uploaded": target,
         "records": len(rows),
         "bytes": len(payload),
         "http_status": status,
+        "pipeline_update": triggered,
     }

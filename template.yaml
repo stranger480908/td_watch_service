@@ -74,10 +74,12 @@ Resources:
           ODP_SECRET_ARN: !Ref OdpApiKey
           PRODUCT: TRTDXFAP
           LOAD_FUNCTION: !Ref LoadFunction
+          UPLOAD_FUNCTION: !Ref DatabricksUploadFunction
       Policies:
         - S3CrudPolicy: { BucketName: !Ref RawBucket }
         - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref OdpApiKey }
         - LambdaInvokePolicy: { FunctionName: !Ref LoadFunction }
+        - LambdaInvokePolicy: { FunctionName: !Ref DatabricksUploadFunction }
       Events:
         Daily:
           Type: Schedule
@@ -155,6 +157,7 @@ Resources:
         Variables:
           RAW_BUCKET: !Sub tmwatch-raw-${AWS::AccountId}-${AWS::Region}
           DATABRICKS_SECRET: DatabricksIngest
+          DATABRICKS_PIPELINE_ID: 99acba03-8fc7-4ada-ae49-e5e54487ff9d
       Policies:
         - S3ReadPolicy:
             BucketName: !Sub tmwatch-raw-${AWS::AccountId}-${AWS::Region}
