@@ -141,6 +141,26 @@ Resources:
       Policies:
         - VPCAccessPolicy: {}
 
+  # Pushes parsed daily files into the Databricks bronze volume.
+  # Outside the VPC: needs public internet for the Databricks REST API.
+  # Free Edition cannot read S3 directly, so we push rather than let it pull.
+  DatabricksUploadFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: tdxf.handlers.databricks_upload_handler
+      MemorySize: 3008
+      Timeout: 900
+      Environment:
+        Variables:
+          RAW_BUCKET: !Sub tmwatch-raw-${AWS::AccountId}-${AWS::Region}
+          DATABRICKS_SECRET: DatabricksIngest
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Sub tmwatch-raw-${AWS::AccountId}-${AWS::Region}
+        - AWSSecretsManagerGetSecretValuePolicy:
+            SecretArn: !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:DatabricksIngest-*
+
   IngestFailureAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:

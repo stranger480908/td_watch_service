@@ -280,3 +280,104 @@ def query_handler(event, context):
         return {"error": str(e)[:1500]}
     finally:
         conn.close()
+
+
+def databricks_upload_handler(event, context):
+    """
+    Push a parsed daily file into the Databricks bronze volume.
+
+    Free Edition cannot read S3 directly: there is no storage credential and no
+    external location, so Auto Loader over the raw bucket is not available. This
+    pushes into Databricks instead of asking Databricks to pull, which the
+    inbound files API does allow.
+
+    In a paid workspace this function would not exist. The production design is
+    an external location over the raw bucket with Auto Loader picking up new
+    objects incrementally, and no copying at all.
+
+    Invoke with {"bucket": ..., "key": ...}, or {} to use the newest object
+    under the applications prefix.
+    """
+    import io
+    import urllib.error
+
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    from .parser import iter_case_files_from_zip
+
+    cfg = json.loads(
+        boto3.client("secretsmanager").get_secret_value(
+            SecretId=os.environ["DATABRICKS_SECRET"]
+        )["SecretString"]
+    )
+    host, token = cfg["host"].rstrip("/"), cfg["token"]
+
+    bucket = event.get("bucket") or RAW_BUCKET
+    s3_key = event.get("key")
+    if not s3_key:
+        page = s3.list_objects_v2(Bucket=bucket, Prefix="applications/")
+        objs = [o for o in page.get("Contents", []) if o["Key"].endswith(".zip")]
+        if not objs:
+            return {"error": "no zip objects found"}
+        s3_key = max(objs, key=lambda o: o["LastModified"])["Key"]
+
+    name = s3_key.rsplit("/", 1)[-1]
+    local = f"/tmp/{name}"
+    s3.download_file(bucket, s3_key, local)
+
+    rows = []
+    for cf in iter_case_files_from_zip(local):
+        if not cf.serial_number:
+            continue
+        rows.append({
+            "serial_number": cf.serial_number,
+            "registration_number": cf.registration_number,
+            "mark_identification": cf.mark_identification,
+            "full_mark_text": cf.full_mark_text or None,
+            "filing_date": cf.filing_date,
+            "registration_date": cf.registration_date,
+            "status_code": cf.status_code,
+            "published_for_opposition_date": cf.published_for_opposition_date,
+            "abandonment_date": cf.abandonment_date,
+            "cancellation_date": cf.cancellation_date,
+            "attorney_name": cf.attorney_name,
+            "nice_classes": cf.nice_classes,
+            "goods_classes": [c for c, _ in cf.goods_services],
+            "goods_descriptions": [d for _, d in cf.goods_services],
+            "pseudo_marks": cf.pseudo_marks,
+            "translations": cf.translations,
+            "transliterations": cf.transliterations,
+            "owner_names": cf.owner_names,
+            "source_file": name,
+            "file_date": _file_date(name),
+        })
+    os.remove(local)
+
+    buf = io.BytesIO()
+    pq.write_table(pa.Table.from_pylist(rows), buf, compression="snappy")
+    payload = buf.getvalue()
+
+    target = f"/Volumes/dev/bronze/raw_files/{name.replace('.zip', '.parquet')}"
+    url = f"{host}/api/2.0/fs/files{target}?overwrite=true"
+    req = urllib.request.Request(
+        url,
+        data=payload,
+        method="PUT",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/octet-stream",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=300) as r:
+            status = r.status
+    except urllib.error.HTTPError as e:
+        return {"error": f"upload failed: HTTP {e.code}", "detail": e.read()[:400].decode("utf-8", "replace")}
+
+    return {
+        "uploaded": target,
+        "records": len(rows),
+        "bytes": len(payload),
+        "http_status": status,
+    }
